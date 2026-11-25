@@ -305,8 +305,8 @@ static void translate_pad_xinput(const u8 *data, struct ds2report *ds2)
     if (b1 & 0x10) ps2_h &= ~(1 << 6); // Cross (A)
     if (b1 & 0x40) ps2_h &= ~(1 << 7); // Square (X)
 
-    ds2->ButtonStateL = ps2_l;
-    ds2->ButtonStateH = ps2_h;
+    ds2->nButtonStateL = ps2_l;
+    ds2->nButtonStateH = ps2_h;
 
     // Eixos XInput (signed 16-bit LE) -> PS2 (0..255, centro 128, Y invertido)
     s16 lx = (s16)(data[6] | (data[7] << 8));
