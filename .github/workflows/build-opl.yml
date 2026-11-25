@@ -15,9 +15,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install make if missing
+      - name: Install build dependencies
         run: |
-          which make || apk add --no-cache make
+          apk add --no-cache make bash git curl python3
 
       - name: Compile OPL with MMCE and PADEMU
         run: |
