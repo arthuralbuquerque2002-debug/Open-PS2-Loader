@@ -9,11 +9,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ps2dev/ps2dev:latest
+      image: ghcr.io/ps2dev/ps2dev:latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install make if missing
+        run: |
+          which make || apk add --no-cache make
 
       - name: Compile OPL with MMCE and PADEMU
         run: |
