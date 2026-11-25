@@ -19,9 +19,10 @@
 
 #define MAX_PADS 4
 
-#define XINPUT_VID 0x045E
-#define XINPUT_PID 0x028E
-#define XINPUT_TYPE 99
+#define XINPUT_VID      0x045E
+#define XINPUT_PID      0x028E
+#define XINPUT_TYPE     99
+#define XINPUT_DEADZONE 6
 
 static u8 output_01_report[] =
     {
@@ -75,6 +76,36 @@ static int LEDRumble(u8 *led, u8 lrum, u8 rrum, int pad);
 
 ds34usb_device ds34pad[MAX_PADS];
 
+static u8 apply_deadzone(u8 val)
+{
+    if (val >= (128 - XINPUT_DEADZONE) && val <= (128 + XINPUT_DEADZONE))
+        return 128;
+    return val;
+}
+
+static int is_xinput_device(int devId, UsbDeviceDescriptor *device)
+{
+    UsbConfigDescriptor *config;
+    UsbInterfaceDescriptor *interface;
+
+    if (device->idVendor == XINPUT_VID && (device->idProduct == XINPUT_PID || device->idProduct == 0x028F || device->idProduct == 0x02A1))
+        return 1;
+
+    config = (UsbConfigDescriptor *)UsbGetDeviceStaticDescriptor(devId, device, USB_DT_CONFIG);
+    if (config != NULL) {
+        interface = (UsbInterfaceDescriptor *)((char *)config + config->bLength);
+        if (interface != NULL &&
+            interface->bDescriptorType == USB_DT_INTERFACE &&
+            interface->bInterfaceClass == 0xFF &&
+            interface->bInterfaceSubClass == 0x5D &&
+            interface->bInterfaceProtocol == 0x01) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 int usb_probe(int devId)
 {
     UsbDeviceDescriptor *device = NULL;
@@ -94,7 +125,7 @@ int usb_probe(int devId)
     if (device->idVendor == DS34_VID && (device->idProduct == DS3_PID || device->idProduct == DS4_PID || device->idProduct == DS4_PID_SLIM))
         return 1;
 
-    if (device->idVendor == XINPUT_VID && device->idProduct == XINPUT_PID)
+    if (is_xinput_device(devId, device))
         return 1;
 
     return 0;
@@ -123,18 +154,16 @@ int usb_connect(int devId)
     PollSema(ds34pad[pad].sema);
 
     ds34pad[pad].devId = devId;
-
     ds34pad[pad].status = DS34USB_STATE_AUTHORIZED;
-
     ds34pad[pad].controlEndp = UsbOpenEndpoint(devId, NULL);
 
     device = (UsbDeviceDescriptor *)UsbGetDeviceStaticDescriptor(devId, NULL, USB_DT_DEVICE);
     config = (UsbConfigDescriptor *)UsbGetDeviceStaticDescriptor(devId, device, USB_DT_CONFIG);
     interface = (UsbInterfaceDescriptor *)((char *)config + config->bLength);
 
-    if (device->idVendor == XINPUT_VID && device->idProduct == XINPUT_PID) {
+    if (is_xinput_device(devId, device)) {
         ds34pad[pad].type = XINPUT_TYPE;
-        epCount = 12;
+        epCount = 4;
     } else if (device->idProduct == DS3_PID) {
         ds34pad[pad].type = DS3;
         epCount = interface->bNumEndpoints - 1;
@@ -146,7 +175,7 @@ int usb_connect(int devId)
         epCount = interface->bNumEndpoints - 1;
     } else {
         ds34pad[pad].type = DS4;
-        epCount = 20; // ds4 v2 returns interface->bNumEndpoints as 0
+        epCount = 20;
     }
 
     endpoint = (UsbEndpointDescriptor *)UsbGetDeviceStaticDescriptor(devId, NULL, USB_DT_ENDPOINT);
@@ -253,7 +282,7 @@ static void usb_config_set(int result, int count, void *arg)
         led[2] = rgbled_patterns[pad][1][2];
         led[3] = 0;
     } else if (ds34pad[pad].type == XINPUT_TYPE) {
-        led[0] = (u8)(pad + 0x06); // LED player 1..4 on Xbox 360 ring
+        led[0] = (u8)(pad + 0x06);
         led[1] = 0;
         led[2] = 0;
         led[3] = 0;
@@ -283,7 +312,6 @@ static void translate_pad_xinput(const u8 *data, struct ds2report *ds2)
     u8 lt = data[4];
     u8 rt = data[5];
 
-    // Mapeamento PS2 (0 = pressionado, 1 = solto)
     u8 ps2_l = 0xFF;
     u8 ps2_h = 0xFF;
 
@@ -308,18 +336,16 @@ static void translate_pad_xinput(const u8 *data, struct ds2report *ds2)
     ds2->nButtonStateL = ps2_l;
     ds2->nButtonStateH = ps2_h;
 
-    // Eixos XInput (signed 16-bit LE) -> PS2 (0..255, centro 128, Y invertido)
     s16 lx = (s16)(data[6] | (data[7] << 8));
     s16 ly = (s16)(data[8] | (data[9] << 8));
     s16 rx = (s16)(data[10] | (data[11] << 8));
     s16 ry = (s16)(data[12] | (data[13] << 8));
 
-    ds2->LeftStickX  = (u8)((lx >> 8) + 128);
-    ds2->LeftStickY  = (u8)(255 - ((ly >> 8) + 128));
-    ds2->RightStickX = (u8)((rx >> 8) + 128);
-    ds2->RightStickY = (u8)(255 - ((ry >> 8) + 128));
+    ds2->LeftStickX  = apply_deadzone((u8)((lx >> 8) + 128));
+    ds2->LeftStickY  = apply_deadzone((u8)(255 - ((ly >> 8) + 128)));
+    ds2->RightStickX = apply_deadzone((u8)((rx >> 8) + 128));
+    ds2->RightStickY = apply_deadzone((u8)(255 - ((ry >> 8) + 128)));
 
-    // Pressão analógica dos botões
     ds2->PressureRight    = (b0 & 0x08) ? 0xFF : 0x00;
     ds2->PressureLeft     = (b0 & 0x04) ? 0xFF : 0x00;
     ds2->PressureUp       = (b0 & 0x01) ? 0xFF : 0x00;
@@ -346,7 +372,7 @@ static void readReport(u8 *data, int pad_idx)
             translate_pad_xinput(data, &pad->ds2);
             padMacroPerform(&pad->ds2, guide);
 
-            if (guide && (data[2] & 0x20) && (pad->btn_delay == MAX_DELAY)) { // Guide + Back alterna analógico
+            if (guide && (data[2] & 0x20) && (pad->btn_delay == MAX_DELAY)) {
                 if (pad->analog_btn < 2)
                     pad->analog_btn = !pad->analog_btn;
                 pad->btn_delay = 1;
