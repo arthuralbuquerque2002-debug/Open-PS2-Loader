@@ -1,0 +1,29 @@
+name: Build OPL MMCE + XInput
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ps2homebrew/ps2homebrew:main
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Compile OPL with MMCE and PADEMU
+        run: |
+          make clean
+          make MMCE=1 PADEMU=1 IGR=1 GSM=1 VMC=1
+
+      - name: Upload Compiled OPNPS2LD.ELF
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPNPS2LD-MMCE-XINPUT
+          path: OPNPS2LD.ELF
