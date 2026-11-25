@@ -276,7 +276,7 @@ static void DS3USB_init(int pad)
     UsbControlTransfer(ds34pad[pad].controlEndp, REQ_USB_OUT, USB_REQ_SET_REPORT, (HID_USB_GET_REPORT_FEATURE << 8) | 0xF4, 0, 4, usb_buf, NULL, NULL);
 }
 
-static void translate_pad_xinput(const u8 *data, ds2_pad_t *ds2)
+static void translate_pad_xinput(const u8 *data, struct ds2report *ds2)
 {
     u8 b0 = data[2]; // D-Pad, Start, Back, L3, R3
     u8 b1 = data[3]; // LB, RB, Guide, A, B, X, Y
